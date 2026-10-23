@@ -146,7 +146,7 @@ local function initTouchEvents()
             if self.parent.onSwitchFocus then
                 self.parent:onSwitchFocus(self)
             else
-                if not ((Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled")) then
+                if not (Device:useSystemKeyboard() or (Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled")) then
                     self:onShowKeyboard()
                 end
                 Device:startTextInput()
@@ -213,7 +213,7 @@ local function initDPadEvents()
             -- Event sent by focusmanager
             if self.parent.onSwitchFocus then
                 self.parent:onSwitchFocus(self)
-            elseif (Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled") then
+            elseif Device:useSystemKeyboard() or (Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled") then
                 do end -- luacheck: ignore 541
             else
                 if not self:isKeyboardVisible() then

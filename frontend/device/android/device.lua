@@ -77,6 +77,17 @@ local Device = Generic:extend{
     model = android.prop.product,
     hasKeys = yes,
     hasDPad = no,
+    useSystemKeyboard = function() return G_reader_settings:isTrue("android_system_keyboard") end,
+    startTextInput = function()
+        if G_reader_settings:isTrue("android_system_keyboard") then
+            android.lib.ANativeActivity_showSoftInput(android.app.activity, 2) -- ANATIVEACTIVITY_SHOW_SOFT_INPUT_FORCED
+        end
+    end,
+    stopTextInput = function()
+        if G_reader_settings:isTrue("android_system_keyboard") then
+            android.lib.ANativeActivity_hideSoftInput(android.app.activity, 0)
+        end
+    end,
     hasSeamlessWifiToggle = no, -- Requires losing focus to the sytem's network settings and user interaction
     hasExitOptions = no,
     hasEinkScreen = function() return android.isEink() end,

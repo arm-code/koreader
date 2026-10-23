@@ -255,6 +255,18 @@ if Device:hasKeyboard() or Device:hasScreenKB() then
         end,
     })
 end
+if Device:isAndroid() then
+    table.insert(sub_item_table, 4, {
+        text = _("Use Android keyboard"),
+        help_text = _("Use the system on-screen keyboard instead of KOReader's own keyboard in text input fields."),
+        checked_func = function()
+            return G_reader_settings:isTrue("android_system_keyboard")
+        end,
+        callback = function()
+            G_reader_settings:flipNilOrFalse("android_system_keyboard")
+        end,
+    })
+end
 if Device:isTouchDevice() then
     -- same pos. 4 as above so if both conditions are met we are above "Show virtual keyboard"
     table.insert(sub_item_table, 4, {

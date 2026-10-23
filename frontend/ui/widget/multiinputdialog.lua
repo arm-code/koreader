@@ -112,7 +112,7 @@ function MultiInputDialog:init(reinit)
 
     -- Reset self.keyboard_visible because InputDialog:onCloseKeyboard sets it to false, which can lead to an incorrect keyboard
     -- visibility state since we still might want our very own virtual keyboard.
-    if (Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled") then
+    if Device:useSystemKeyboard() or (Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled") then
         do end -- luacheck: ignore 541
     elseif self.readonly then
         do end -- luacheck: ignore 541
@@ -266,7 +266,7 @@ function MultiInputDialog:onSwitchFocus(inputbox)
     self._input_widget:focus()
     self.focused_field_idx = inputbox.idx
 
-    if (Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled") then
+    if Device:useSystemKeyboard() or (Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse("virtual_keyboard_enabled") then
         -- do not load virtual keyboard when user is hiding it.
         return
     end

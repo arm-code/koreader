@@ -387,6 +387,11 @@ function Device:hasKeyboardTextInput()
     return self.input.hw_text_layout ~= nil
 end
 
+-- True if the platform's own on-screen keyboard should be used instead of KOReader's VirtualKeyboard.
+function Device:useSystemKeyboard()
+    return false
+end
+
 function Device:setScreenDPI(dpi_override)
     -- Passing a nil resets to defaults and clears the override flag
     self.screen:setDPI(dpi_override)
