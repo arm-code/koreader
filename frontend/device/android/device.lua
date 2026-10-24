@@ -78,14 +78,16 @@ local Device = Generic:extend{
     hasKeys = yes,
     hasDPad = no,
     useSystemKeyboard = function() return G_reader_settings:isTrue("android_system_keyboard") end,
-    startTextInput = function()
+    startTextInput = function(self)
         if G_reader_settings:isTrue("android_system_keyboard") then
-            android.lib.ANativeActivity_showSoftInput(android.app.activity, 2) -- ANATIVEACTIVITY_SHOW_SOFT_INPUT_FORCED
+            android.showSoftKeyboard()
+            self:pollSoftKeyboard()
         end
     end,
-    stopTextInput = function()
+    stopTextInput = function(self)
         if G_reader_settings:isTrue("android_system_keyboard") then
-            android.lib.ANativeActivity_hideSoftInput(android.app.activity, 0)
+            self:stopPollingSoftKeyboard()
+            android.hideSoftKeyboard()
         end
     end,
     hasSeamlessWifiToggle = no, -- Requires losing focus to the sytem's network settings and user interaction
@@ -144,6 +146,38 @@ function Device:otaModel()
         model = "android"
     end
     return model, "link"
+end
+
+-- The system keyboard reports what was typed through a queue that we poll:
+-- plain text, "" for backspace and "
+" for enter.
+function Device:pollSoftKeyboard()
+    local Key = require("device/key")
+    local text = android.pollSoftKeyboard()
+    for chunk, special in text:gmatch("([^
+]*)([
+]?)") do
+        if chunk ~= "" then
+            UIManager:sendEvent(Event:new("TextInput", chunk))
+        end
+        if special == "" then
+            UIManager:sendEvent(Event:new("KeyPress", Key:new("Backspace", {})))
+        elseif special == "
+" then
+            UIManager:sendEvent(Event:new("KeyPress", Key:new("Enter", {})))
+        end
+    end
+    if not self._soft_keyboard_poll then
+        self._soft_keyboard_poll = function() self:pollSoftKeyboard() end
+    end
+    UIManager:unschedule(self._soft_keyboard_poll)
+    UIManager:scheduleIn(0.1, self._soft_keyboard_poll)
+end
+
+function Device:stopPollingSoftKeyboard()
+    if self._soft_keyboard_poll then
+        UIManager:unschedule(self._soft_keyboard_poll)
+    end
 end
 
 function Device:init()

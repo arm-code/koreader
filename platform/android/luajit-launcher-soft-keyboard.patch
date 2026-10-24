@@ -1,0 +1,212 @@
+diff --git a/app/src/main/java/org/koreader/launcher/LuaInterface.kt b/app/src/main/java/org/koreader/launcher/LuaInterface.kt
+index 059ae5e..109f224 100644
+--- a/app/src/main/java/org/koreader/launcher/LuaInterface.kt
++++ b/app/src/main/java/org/koreader/launcher/LuaInterface.kt
+@@ -75,6 +75,9 @@ interface LuaInterface {
+     fun setFullscreen(enabled: Boolean)
+     fun setClipboardText(text: String)
+     fun setIgnoreInput(enabled: Boolean)
++    fun showSoftKeyboard()
++    fun hideSoftKeyboard()
++    fun pollSoftKeyboard(): String
+     fun setScreenBrightness(brightness: Int)
+     fun setScreenWarmth(warmth: Int)
+     fun setScreenOffTimeout(ms: Int)
+diff --git a/app/src/main/java/org/koreader/launcher/MainActivity.kt b/app/src/main/java/org/koreader/launcher/MainActivity.kt
+index 04b9133..e51f11e 100644
+--- a/app/src/main/java/org/koreader/launcher/MainActivity.kt
++++ b/app/src/main/java/org/koreader/launcher/MainActivity.kt
+@@ -39,6 +39,7 @@ class MainActivity : NativeActivity(), LuaInterface,
+     private lateinit var timeout: Timeout
+     private lateinit var updater: ApkUpdater
+     private lateinit var lightDialog: LightDialog
++    private lateinit var softKeyboard: SoftKeyboard
+ 
+     private var isResumed = false
+ 
+@@ -111,6 +112,7 @@ class MainActivity : NativeActivity(), LuaInterface,
+         event = EventReceiver()
+         updater = ApkUpdater()
+         lightDialog = LightDialog()
++        softKeyboard = SoftKeyboard(this)
+ 
+         setTheme(R.style.Fullscreen)
+ 
+@@ -717,6 +719,18 @@ class MainActivity : NativeActivity(), LuaInterface,
+         }
+     }
+ 
++    override fun showSoftKeyboard() {
++        runOnUiThread { softKeyboard.show(this) }
++    }
++
++    override fun hideSoftKeyboard() {
++        runOnUiThread { softKeyboard.hide() }
++    }
++
++    override fun pollSoftKeyboard(): String {
++        return softKeyboard.poll()
++    }
++
+     override fun setScreenBrightness(brightness: Int) {
+         device.lights.setBrightness(this, brightness)
+     }
+diff --git a/app/src/main/java/org/koreader/launcher/SoftKeyboard.kt b/app/src/main/java/org/koreader/launcher/SoftKeyboard.kt
+new file mode 100644
+index 0000000..2e83259
+--- /dev/null
++++ b/app/src/main/java/org/koreader/launcher/SoftKeyboard.kt
+@@ -0,0 +1,119 @@
++package org.koreader.launcher
++
++import android.content.Context
++import android.text.InputType
++import android.view.KeyEvent
++import android.view.View
++import android.view.ViewGroup
++import android.view.inputmethod.BaseInputConnection
++import android.view.inputmethod.EditorInfo
++import android.view.inputmethod.InputConnection
++import android.view.inputmethod.InputMethodManager
++import android.widget.FrameLayout
++import java.util.concurrent.ConcurrentLinkedQueue
++
++/* Lets the system on-screen keyboard type into KOReader.
++ *
++ * NativeActivity has no text-editing view, so the system refuses to show its keyboard.
++ * We attach a tiny invisible view that behaves as a text editor and turn what the IME
++ * sends into a queue of operations that lua polls: plain text, '\b' (backspace), '\n' (enter). */
++class SoftKeyboard(private val context: Context) {
++
++    private val pending = ConcurrentLinkedQueue<String>()
++    private var composingLength = 0
++    private var view: ImeView? = null
++
++    private inner class ImeView : View(context) {
++        init {
++            isFocusable = true
++            isFocusableInTouchMode = true
++        }
++
++        override fun onCheckIsTextEditor(): Boolean = true
++
++        override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
++            outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
++            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI
++            composingLength = 0
++            return Connection(this)
++        }
++    }
++
++    private inner class Connection(target: View) : BaseInputConnection(target, false) {
++        // Replace the text currently being composed by the IME with the new text.
++        private fun replaceComposing(text: CharSequence?) {
++            repeat(composingLength) { pending.add("\b") }
++            composingLength = 0
++            if (!text.isNullOrEmpty()) pending.add(text.toString())
++        }
++
++        override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
++            replaceComposing(text)
++            composingLength = text?.length ?: 0
++            return true
++        }
++
++        override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
++            replaceComposing(text)
++            return true
++        }
++
++        override fun finishComposingText(): Boolean {
++            composingLength = 0
++            return true
++        }
++
++        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
++            if (composingLength > 0) {
++                composingLength = maxOf(0, composingLength - beforeLength)
++            }
++            repeat(beforeLength) { pending.add("\b") }
++            return true
++        }
++
++        override fun sendKeyEvent(event: KeyEvent): Boolean {
++            if (event.action == KeyEvent.ACTION_DOWN) {
++                when (event.keyCode) {
++                    KeyEvent.KEYCODE_DEL -> pending.add("\b")
++                    KeyEvent.KEYCODE_ENTER -> pending.add("\n")
++                    else -> {
++                        val ch = event.unicodeChar
++                        if (ch != 0) pending.add(String(Character.toChars(ch)))
++                    }
++                }
++            }
++            return true
++        }
++    }
++
++    /* Must run on the UI thread. */
++    fun show(activity: android.app.Activity) {
++        val v = view ?: ImeView().also {
++            activity.addContentView(it, FrameLayout.LayoutParams(1, 1))
++            view = it
++        }
++        v.visibility = View.VISIBLE
++        v.requestFocus()
++        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
++        imm.restartInput(v)
++        imm.showSoftInput(v, InputMethodManager.SHOW_IMPLICIT)
++    }
++
++    /* Must run on the UI thread. */
++    fun hide() {
++        val v = view ?: return
++        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
++        imm.hideSoftInputFromWindow(v.windowToken, 0)
++        composingLength = 0
++        pending.clear()
++    }
++
++    /* Returns and clears what was typed since the last call. */
++    fun poll(): String {
++        val sb = StringBuilder()
++        while (true) {
++            sb.append(pending.poll() ?: break)
++        }
++        return sb.toString()
++    }
++}
+diff --git a/assets/android.lua b/assets/android.lua
+index 44af8ee..b2ec8f3 100644
+--- a/assets/android.lua
++++ b/assets/android.lua
+@@ -1945,6 +1945,29 @@ local function run(android_app_state)
+         end)
+     end
+ 
++    android.showSoftKeyboard = function()
++        JNI:context(android.app.activity.vm, function(jni)
++            jni:callVoidMethod(android.app.activity.clazz, "showSoftKeyboard", "()V")
++        end)
++    end
++
++    android.hideSoftKeyboard = function()
++        JNI:context(android.app.activity.vm, function(jni)
++            jni:callVoidMethod(android.app.activity.clazz, "hideSoftKeyboard", "()V")
++        end)
++    end
++
++    android.pollSoftKeyboard = function()
++        return JNI:context(android.app.activity.vm, function(jni)
++            local text = jni:callObjectMethod(
++                android.app.activity.clazz,
++                "pollSoftKeyboard",
++                "()Ljava/lang/String;"
++            )
++            return jni:to_string(text)
++        end)
++    end
++
+     android.setHapticOverride = function(enable)
+         android.hapticOverride = enable or false
+     end
