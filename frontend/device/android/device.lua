@@ -172,7 +172,7 @@ function Device:pollSoftKeyboard()
         if special == "\b" then
             UIManager:sendEvent(Event:new("KeyPress", Key:new("Backspace", {})))
         elseif special == "\n" then
-            UIManager:sendEvent(Event:new("KeyPress", Key:new("Enter", {})))
+            UIManager:sendEvent(Event:new("KeyPress", Key:new("Press", {})))
         end
     end
     -- Let the dialogs make room for the keyboard once its height is stable (it animates in and out).
