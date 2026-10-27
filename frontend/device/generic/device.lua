@@ -392,6 +392,11 @@ function Device:useSystemKeyboard()
     return false
 end
 
+-- Height of the area covered by the platform's own keyboard (see useSystemKeyboard).
+function Device:getSystemKeyboardHeight()
+    return 0
+end
+
 function Device:setScreenDPI(dpi_override)
     -- Passing a nil resets to defaults and clears the override flag
     self.screen:setDPI(dpi_override)

@@ -1,19 +1,20 @@
 diff --git a/app/src/main/java/org/koreader/launcher/LuaInterface.kt b/app/src/main/java/org/koreader/launcher/LuaInterface.kt
-index 059ae5e..109f224 100644
+index 059ae5e..29ab21c 100644
 --- a/app/src/main/java/org/koreader/launcher/LuaInterface.kt
 +++ b/app/src/main/java/org/koreader/launcher/LuaInterface.kt
-@@ -75,6 +75,9 @@ interface LuaInterface {
+@@ -75,6 +75,10 @@ interface LuaInterface {
      fun setFullscreen(enabled: Boolean)
      fun setClipboardText(text: String)
      fun setIgnoreInput(enabled: Boolean)
 +    fun showSoftKeyboard()
 +    fun hideSoftKeyboard()
 +    fun pollSoftKeyboard(): String
++    fun getSoftKeyboardHeight(): Int
      fun setScreenBrightness(brightness: Int)
      fun setScreenWarmth(warmth: Int)
      fun setScreenOffTimeout(ms: Int)
 diff --git a/app/src/main/java/org/koreader/launcher/MainActivity.kt b/app/src/main/java/org/koreader/launcher/MainActivity.kt
-index 04b9133..e51f11e 100644
+index 04b9133..8391412 100644
 --- a/app/src/main/java/org/koreader/launcher/MainActivity.kt
 +++ b/app/src/main/java/org/koreader/launcher/MainActivity.kt
 @@ -39,6 +39,7 @@ class MainActivity : NativeActivity(), LuaInterface,
@@ -32,7 +33,7 @@ index 04b9133..e51f11e 100644
  
          setTheme(R.style.Fullscreen)
  
-@@ -717,6 +719,18 @@ class MainActivity : NativeActivity(), LuaInterface,
+@@ -717,6 +719,29 @@ class MainActivity : NativeActivity(), LuaInterface,
          }
      }
  
@@ -48,22 +49,36 @@ index 04b9133..e51f11e 100644
 +        return softKeyboard.poll()
 +    }
 +
++    override fun getSoftKeyboardHeight(): Int {
++        val height = java.util.concurrent.atomic.AtomicInteger(0)
++        val done = CountDownLatch(1)
++        runOnUiThread {
++            height.set(softKeyboard.height())
++            done.countDown()
++        }
++        done.await(200, java.util.concurrent.TimeUnit.MILLISECONDS)
++        return height.get()
++    }
++
      override fun setScreenBrightness(brightness: Int) {
          device.lights.setBrightness(this, brightness)
      }
 diff --git a/app/src/main/java/org/koreader/launcher/SoftKeyboard.kt b/app/src/main/java/org/koreader/launcher/SoftKeyboard.kt
 new file mode 100644
-index 0000000..2e83259
+index 0000000..68347de
 --- /dev/null
 +++ b/app/src/main/java/org/koreader/launcher/SoftKeyboard.kt
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,138 @@
 +package org.koreader.launcher
 +
 +import android.content.Context
++import android.graphics.Rect
++import android.os.Build
 +import android.text.InputType
 +import android.view.KeyEvent
 +import android.view.View
 +import android.view.ViewGroup
++import android.view.WindowInsets
 +import android.view.inputmethod.BaseInputConnection
 +import android.view.inputmethod.EditorInfo
 +import android.view.inputmethod.InputConnection
@@ -167,6 +182,22 @@ index 0000000..2e83259
 +        pending.clear()
 +    }
 +
++    /* Height in pixels of the bottom of the window covered by the keyboard, 0 if hidden.
++     * Must run on the UI thread. */
++    fun height(): Int {
++        val root = view?.rootView ?: return 0
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
++            val insets = root.rootWindowInsets ?: return 0
++            if (!insets.isVisible(WindowInsets.Type.ime())) return 0
++            return insets.getInsets(WindowInsets.Type.ime()).bottom
++        }
++        val visible = Rect()
++        root.getWindowVisibleDisplayFrame(visible)
++        val covered = root.height - visible.bottom
++        // a few dozen pixels are just the navigation bar, not a keyboard
++        return if (covered > root.height / 5) covered else 0
++    }
++
 +    /* Returns and clears what was typed since the last call. */
 +    fun poll(): String {
 +        val sb = StringBuilder()
@@ -177,10 +208,10 @@ index 0000000..2e83259
 +    }
 +}
 diff --git a/assets/android.lua b/assets/android.lua
-index 44af8ee..b2ec8f3 100644
+index 44af8ee..c6b298e 100644
 --- a/assets/android.lua
 +++ b/assets/android.lua
-@@ -1945,6 +1945,29 @@ local function run(android_app_state)
+@@ -1945,6 +1945,39 @@ local function run(android_app_state)
          end)
      end
  
@@ -204,6 +235,16 @@ index 44af8ee..b2ec8f3 100644
 +                "()Ljava/lang/String;"
 +            )
 +            return jni:to_string(text)
++        end)
++    end
++
++    android.getSoftKeyboardHeight = function()
++        return JNI:context(android.app.activity.vm, function(jni)
++            return jni:callIntMethod(
++                android.app.activity.clazz,
++                "getSoftKeyboardHeight",
++                "()I"
++            )
 +        end)
 +    end
 +

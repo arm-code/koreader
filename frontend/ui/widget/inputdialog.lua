@@ -307,7 +307,8 @@ function InputDialog:init(reinit)
         local text_height = input_widget:getTextHeight()
         local line_height = input_widget:getLineHeight()
         local input_pad_height = input_widget:getSize().h - text_height
-        local keyboard_height = self.keyboard_visible and input_widget:getKeyboardDimen().h or 0
+        local keyboard_height = Device:useSystemKeyboard() and Device:getSystemKeyboardHeight()
+                                or self.keyboard_visible and input_widget:getKeyboardDimen().h or 0
         input_widget:onCloseKeyboard() -- we don't want multiple VKs, as the show/hide tracking assumes there's only one
         input_widget:onCloseWidget() -- free() textboxwidget and keyboard
         -- Find out available height
@@ -464,7 +465,8 @@ function InputDialog:init(reinit)
         }
         frame = self.movable
     end
-    local keyboard_height = self.keyboard_visible and self._input_widget:getKeyboardDimen().h or 0
+    local keyboard_height = Device:useSystemKeyboard() and Device:getSystemKeyboardHeight()
+                            or self.keyboard_visible and self._input_widget:getKeyboardDimen().h or 0
     self[1] = CenterContainer:new{
         dimen = Geom:new{
             w = self.screen_width,

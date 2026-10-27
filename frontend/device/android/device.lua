@@ -80,16 +80,28 @@ local Device = Generic:extend{
     useSystemKeyboard = function() return G_reader_settings:isTrue("android_system_keyboard") end,
     startTextInput = function(self)
         if G_reader_settings:isTrue("android_system_keyboard") then
+            -- a dialog being rebuilt stops and starts text input right away: keep the keyboard up
+            if self._soft_keyboard_hide then
+                UIManager:unschedule(self._soft_keyboard_hide)
+            end
             android.showSoftKeyboard()
             self:pollSoftKeyboard()
         end
     end,
     stopTextInput = function(self)
         if G_reader_settings:isTrue("android_system_keyboard") then
-            self:stopPollingSoftKeyboard()
-            android.hideSoftKeyboard()
+            if not self._soft_keyboard_hide then
+                self._soft_keyboard_hide = function()
+                    self:stopPollingSoftKeyboard()
+                    android.hideSoftKeyboard()
+                    self._soft_keyboard_height = 0
+                end
+            end
+            UIManager:unschedule(self._soft_keyboard_hide)
+            UIManager:scheduleIn(0.3, self._soft_keyboard_hide)
         end
     end,
+    getSystemKeyboardHeight = function(self) return self._soft_keyboard_height or 0 end,
     hasSeamlessWifiToggle = no, -- Requires losing focus to the sytem's network settings and user interaction
     hasExitOptions = no,
     hasEinkScreen = function() return android.isEink() end,
@@ -163,6 +175,13 @@ function Device:pollSoftKeyboard()
             UIManager:sendEvent(Event:new("KeyPress", Key:new("Enter", {})))
         end
     end
+    -- Let the dialogs make room for the keyboard once its height is stable (it animates in and out).
+    local height = android.getSoftKeyboardHeight()
+    if height == self._soft_keyboard_last_height and height ~= self:getSystemKeyboardHeight() then
+        self._soft_keyboard_height = height
+        UIManager:sendEvent(Event:new("KeyboardHeightChanged"))
+    end
+    self._soft_keyboard_last_height = height
     if not self._soft_keyboard_poll then
         self._soft_keyboard_poll = function() self:pollSoftKeyboard() end
     end
