@@ -149,21 +149,17 @@ function Device:otaModel()
 end
 
 -- The system keyboard reports what was typed through a queue that we poll:
--- plain text, "" for backspace and "
-" for enter.
+-- plain text, "\b" for backspace and "\n" for enter.
 function Device:pollSoftKeyboard()
     local Key = require("device/key")
     local text = android.pollSoftKeyboard()
-    for chunk, special in text:gmatch("([^
-]*)([
-]?)") do
+    for chunk, special in text:gmatch("([^\b\n]*)([\b\n]?)") do
         if chunk ~= "" then
             UIManager:sendEvent(Event:new("TextInput", chunk))
         end
-        if special == "" then
+        if special == "\b" then
             UIManager:sendEvent(Event:new("KeyPress", Key:new("Backspace", {})))
-        elseif special == "
-" then
+        elseif special == "\n" then
             UIManager:sendEvent(Event:new("KeyPress", Key:new("Enter", {})))
         end
     end
